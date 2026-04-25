@@ -5,6 +5,7 @@ from utils.respond_canvas import respond_canvas
 from utils.get_quiz_response import get_quiz_response
 from fastapi.middleware.cors import CORSMiddleware
 from utils.generate_quiz import generate_quiz_util
+from utils.generate_text_response import generate_text_response
 
 
 # Load environment variables
@@ -37,7 +38,14 @@ def generate_video(prompt: str, W: int = 680, H: int = 400):
     response = respond_canvas(APIKEY=openai_api_key, PROMPT=prompt, W=W, H=H)
     return response
 
-# GENERATE TEXT 
+# GENERATE TEXT RESPONSE
+@app.post("/response/generate",tags = ["chatbot"])
+def generate_response(
+    conversation_history: str = Query(..., description="JSON string of conversation history"),
+    user_message:str = Query(...,description = "User Message"),
+    topic: str = Query(..., description="Topic name")
+):
+    return generate_text_response(conversation_history,user_message, topic)
 
 # GENERATE QUIZ 
 @app.post("/quiz/generate", tags=["quiz"])
