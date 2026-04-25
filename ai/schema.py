@@ -8,6 +8,7 @@ class CanvasResponse(BaseModel):
     canvas_code: str = Field(..., description="Canvas JavaScript code for rendering")
     text: str = Field(..., description="Script/text narration for the scene")
     duration: float = Field(..., description="Scene duration in seconds", gt=0)
+    audio: str = Field(None, description="Base64-encoded audio MP3 data for narration")
 
 
 class CanvasResponseDict(BaseModel):
@@ -20,13 +21,15 @@ class CanvasResponseDict(BaseModel):
                 "order": 1,
                 "canvas_code": "ctx.fillStyle = 'blue'; ctx.fillRect(0, 0, 800, 600);",
                 "text": "Welcome to the video",
-                "duration": 5.0
+                "duration": 5.0,
+                "audio": "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA"
             },
             {
                 "order": 2,
                 "canvas_code": "ctx.fillStyle = 'red'; ctx.fillRect(100, 100, 200, 200);",
                 "text": "Here are the details",
-                "duration": 8.0
+                "duration": 8.0,
+                "audio": "SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA"
             }
         ]
     )

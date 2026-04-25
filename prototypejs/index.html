@@ -19,9 +19,41 @@
         .workspace {
             position: relative; border: 2px solid #1a1a2e; background: #000;
             width: 680px; height: 400px; display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
         }
 
-        canvas, video { width: 100%; height: 100%; object-fit: contain; }
+        /* Narration Text Overlay */
+        #narrationText {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 90%;
+            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+            border: 1px solid rgba(57, 255, 20, 0.3);
+            pointer-events: none;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+
+        canvas, video { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; 
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
         .controls { margin-top: 25px; display: flex; gap: 15px; }
         
         button { 
@@ -36,6 +68,18 @@
         #postProcess { display: none; gap: 10px; }
         #status { margin-top: 15px; color: #888; font-size: 0.9rem; min-height: 1.2em; }
         .hidden { display: none !important; }
+
+        /* Progress bar for narration timing */
+        #narrationProgress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: var(--accent);
+            z-index: 11;
+            transition: width 0.1s linear;
+            box-shadow: 0 0 10px var(--accent);
+        }
     </style>
 </head>
 <body>
@@ -50,6 +94,8 @@
     <div class="workspace">
         <canvas id="videoCanvas" width="680" height="400"></canvas>
         <video id="playback" class="hidden" controls></video>
+        <div id="narrationText"></div>
+        <div id="narrationProgress"></div>
     </div>
 
     <div id="status">Enter a prompt to begin.</div>
@@ -67,11 +113,14 @@ const fetchBtn = document.getElementById('fetchBtn');
 const postProcess = document.getElementById('postProcess');
 const status = document.getElementById('status');
 const promptInput = document.getElementById('promptInput');
+const narrationText = document.getElementById('narrationText');
+const narrationProgress = document.getElementById('narrationProgress');
 
 const W = canvas.width;
 const H = canvas.height;
 let videoUrl = null;
 let sceneData = [];
+let currentSceneIndex = -1;
 
 async function startWorkflow() {
     const prompt = promptInput.value.trim();
@@ -84,8 +133,6 @@ async function startWorkflow() {
         fetchBtn.disabled = true;
         status.innerText = "Connecting to AI Backend...";
         
-        // Adjust this URL to match your actual FastAPI route (excluding the /docs part)
-        // Example: http://127.0.0.1:8000/video/YourPrompt
         const response = await fetch(`http://127.0.0.1:8000/video/${encodeURIComponent(prompt)}`);
         
         if (!response.ok) throw new Error("Backend error or Prompt rejected.");
@@ -103,10 +150,27 @@ async function startWorkflow() {
     }
 }
 
+function showNarration(text, progress = 0) {
+    if (text) {
+        narrationText.textContent = text;
+        narrationText.style.opacity = '1';
+        narrationProgress.style.width = (progress * 100) + '%';
+    } else {
+        narrationText.style.opacity = '0';
+        narrationProgress.style.width = '0%';
+    }
+}
+
+function hideNarration() {
+    narrationText.style.opacity = '0';
+    narrationProgress.style.width = '0%';
+}
+
 async function generateVideo() {
     postProcess.style.display = 'none';
     videoPlayer.classList.add('hidden');
     canvas.classList.remove('hidden');
+    hideNarration();
     
     const chunks = [];
     const stream = canvas.captureStream(30); 
@@ -119,19 +183,46 @@ async function generateVideo() {
         videoPlayer.src = videoUrl;
         status.innerText = "Video Rendered Successfully!";
         postProcess.style.display = 'flex';
+        hideNarration();
     };
 
     recorder.start();
 
-    for (const scene of sceneData) {
+    for (let i = 0; i < sceneData.length; i++) {
+        const scene = sceneData[i];
+        currentSceneIndex = i;
         const durationMs = scene.duration * 1000;
         const startTime = performance.now();
         status.innerText = `Drawing: ${scene.text}`;
+
+        // Show initial narration for this scene
+        showNarration(scene.text, 0);
+        
+        // Create and start audio playback for this scene
+        let audioElement = null;
+        if (scene.audio) {
+            try {
+                audioElement = new Audio();
+                audioElement.src = `data:audio/mp3;base64,${scene.audio}`;
+                audioElement.play();
+            } catch (err) {
+                console.warn("Could not play audio for scene:", err);
+            }
+        }
 
         await new Promise(resolve => {
             function renderFrame(now) {
                 const elapsed = now - startTime;
                 const progress = Math.min(elapsed / durationMs, 1);
+
+                // Update narration progress bar
+                narrationProgress.style.width = (progress * 100) + '%';
+
+                // Add fade out effect to narration near the end of the scene
+                if (progress > 0.8) {
+                    const fadeProgress = (progress - 0.8) / 0.2; // 0 to 1 over last 20%
+                    narrationText.style.opacity = 1 - fadeProgress;
+                }
 
                 ctx.clearRect(0, 0, W, H);
                 ctx.setLineDash([]);
@@ -139,9 +230,7 @@ async function generateVideo() {
                 ctx.globalAlpha = 1.0;
 
                 try {
-                    { // Block scope for 'let' declarations in AI code
-                        eval(scene.canvas_code);
-                    }
+                    eval(scene.canvas_code);
                 } catch (err) {
                     console.error("Canvas Script Error:", err);
                 }
@@ -149,6 +238,15 @@ async function generateVideo() {
                 if (elapsed < durationMs) {
                     requestAnimationFrame(renderFrame);
                 } else {
+                    // Stop audio and prepare for next scene
+                    if (audioElement) {
+                        audioElement.pause();
+                    }
+                    // Scene complete - prepare for next scene with crossfade
+                    if (i < sceneData.length - 1) {
+                        // Quick crossfade to next scene's narration
+                        showNarration(sceneData[i + 1].text, 0);
+                    }
                     resolve();
                 }
             }
@@ -156,8 +254,65 @@ async function generateVideo() {
         });
     }
 
-    setTimeout(() => recorder.stop(), 500);
+    setTimeout(() => {
+        hideNarration();
+        recorder.stop();
+        currentSceneIndex = -1;
+    }, 500);
 }
+
+// Video replay with synchronized narration
+videoPlayer.addEventListener('play', () => {
+    if (!sceneData.length) return;
+    
+    let totalDuration = 0;
+    const sceneTimeMarkers = sceneData.map(scene => {
+        const start = totalDuration;
+        totalDuration += scene.duration;
+        return { start, end: totalDuration, text: scene.text };
+    });
+
+    function updateNarrationDuringPlayback() {
+        if (videoPlayer.paused || videoPlayer.ended) {
+            hideNarration();
+            return;
+        }
+
+        const currentTime = videoPlayer.currentTime;
+        const currentScene = sceneTimeMarkers.find(
+            marker => currentTime >= marker.start && currentTime < marker.end
+        );
+
+        if (currentScene) {
+            const sceneProgress = (currentTime - currentScene.start) / 
+                                 (currentScene.end - currentScene.start);
+            
+            // Fade out in last 20% of scene
+            let opacity = 1;
+            if (sceneProgress > 0.8) {
+                opacity = 1 - ((sceneProgress - 0.8) / 0.2);
+            }
+            
+            narrationText.textContent = currentScene.text;
+            narrationText.style.opacity = Math.max(0, opacity);
+            narrationProgress.style.width = (sceneProgress * 100) + '%';
+        } else {
+            hideNarration();
+        }
+
+        requestAnimationFrame(updateNarrationDuringPlayback);
+    }
+
+    updateNarrationDuringPlayback();
+});
+
+videoPlayer.addEventListener('pause', () => {
+    hideNarration();
+});
+
+videoPlayer.addEventListener('ended', () => {
+    hideNarration();
+});
 
 fetchBtn.addEventListener('click', startWorkflow);
 
@@ -169,6 +324,8 @@ promptInput.addEventListener('keypress', (e) => {
 document.getElementById('replayBtn').addEventListener('click', () => {
     canvas.classList.add('hidden');
     videoPlayer.classList.remove('hidden');
+    hideNarration();
+    videoPlayer.currentTime = 0;
     videoPlayer.play();
 });
 

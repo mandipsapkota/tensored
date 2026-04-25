@@ -30,6 +30,7 @@ Given a topic, return ONLY a JSON object like this:
 }
 
 RULES:
+- Plan the concept into required number of scenes (minimum 15) to explain a topic properly. 
 - Each scene duration: 5 to 7 seconds as required by the input.
 - narration: 1-2 clear, friendly sentences spoken during the scene
 - draw_instructions: be VERY specific about what to draw, where, what colors, what labels, and how it animates using the 'progress' variable (0 to 1). Think visually. Reference specific positions like 'center', 'top-left', 'right side'. Mention exact colors. Describe motion clearly.
@@ -107,6 +108,7 @@ STRICT RULES:
 8. For text: always set ctx.textAlign and ctx.textBaseline before ctx.fillText
 9. Make it VISUALLY RICH: gradients, glows (shadowBlur), smooth curves, multiple elements
 10. Easing: use eased = t < 0.5 ? 2*t*t : -1+(4-2*t)*t where t = progress
+11. Use relevant animations. Try to make animations as relevant to real as possible. 
 
 Draw instructions for this scene:
 """
