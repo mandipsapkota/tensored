@@ -3,186 +3,181 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neural Network Renderer</title>
+    <title>AI Video Generator</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #050505; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        #loading { padding: 20px; font-size: 1.2rem; letter-spacing: 1px; color: #00f2ff; }
-        #videoContainer { margin-top: 20px; border: 1px solid #333; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
-        canvas { display: none; } /* Internal working canvas */
+        :root { --accent: #39ff14; --bg: #050510; }
+        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        
+        /* Form Styling */
+        .input-group { margin-bottom: 20px; display: flex; gap: 10px; width: 680px; }
+        input[type="text"] {
+            flex-grow: 1; padding: 12px; background: #1a1a2e; border: 1px solid #333;
+            color: white; outline: none; transition: border 0.3s;
+        }
+        input[type="text"]:focus { border-color: var(--accent); }
+
+        .workspace {
+            position: relative; border: 2px solid #1a1a2e; background: #000;
+            width: 680px; height: 400px; display: flex; justify-content: center; align-items: center;
+        }
+
+        canvas, video { width: 100%; height: 100%; object-fit: contain; }
+        .controls { margin-top: 25px; display: flex; gap: 15px; }
+        
+        button { 
+            padding: 12px 28px; cursor: pointer; background: transparent; 
+            border: 1px solid var(--accent); color: var(--accent); 
+            font-weight: bold; text-transform: uppercase; transition: all 0.3s ease;
+        }
+
+        button:hover:not(:disabled) { background: var(--accent); color: #000; box-shadow: 0 0 20px var(--accent); }
+        button:disabled { border-color: #333; color: #333; cursor: not-allowed; }
+        
+        #postProcess { display: none; gap: 10px; }
+        #status { margin-top: 15px; color: #888; font-size: 0.9rem; min-height: 1.2em; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
-    <div id="loading">PROCESSING NEURAL LAYERS...</div>
-    <div id="videoContainer"></div>
 
-    <script>
-        const loading = document.getElementById('loading');
-        const container = document.getElementById('videoContainer');
+    <h2 style="color: var(--accent)">AI Animation Engine</h2>
+    
+    <div class="input-group">
+        <input type="text" id="promptInput" placeholder="Enter topic (e.g. How black holes work)...">
+        <button id="fetchBtn">Fetch & Render</button>
+    </div>
 
-        const response = [
-    {
-        "order": 1,
-        "text": "1. Superposition: Qubits exist in multiple states at once.",
-        "duration": 6,
-        "canvas_code": `
-            ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, 800, 600);
-            const CX = 400; const CY = 300;
-            
-            // Draw a spinning Bloch Sphere skeleton
-            ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(CX, CY, 150, 0, Math.PI * 2); ctx.stroke();
-            ctx.beginPath(); ctx.ellipse(CX, CY, 150, 50, 0, 0, Math.PI * 2); ctx.stroke();
-            
-            // The Qubit State Vector moving in superposition
-            const vectorX = CX + Math.sin(time * 2) * 150 * Math.cos(time);
-            const vectorY = CY + Math.cos(time * 2) * 150;
-            
-            ctx.shadowColor = '#00f2ff'; ctx.shadowBlur = 15;
-            ctx.strokeStyle = '#00f2ff';
-            ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(vectorX, vectorY); ctx.stroke();
-            
-            ctx.fillStyle = '#00f2ff';
-            ctx.beginPath(); ctx.arc(vectorX, vectorY, 8, 0, Math.PI * 2); ctx.fill();
-            
-            // "Ghost" states representing 0 and 1
-            ctx.globalAlpha = 0.3;
-            ctx.fillStyle = 'white';
-            ctx.fillText('|0>', CX, CY - 170);
-            ctx.fillText('|1>', CX, CY + 180);
-            ctx.globalAlpha = 1.0;
-        `
-    },
-    {
-        "order": 2,
-        "text": "2. Entanglement: Qubits become perfectly synchronized.",
-        "duration": 8,
-        "canvas_code": `
-            ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, 800, 600);
-            const p1X = 250; const p2X = 550; const Y = 300;
-            
-            // Draw the "Quantum Link"
-            ctx.strokeStyle = 'rgba(191, 0, 255, 0.3)';
-            ctx.lineWidth = 4;
-            ctx.setLineDash([10, 15]);
-            ctx.lineDashOffset = -time * 50;
-            ctx.beginPath(); ctx.moveTo(p1X, Y); ctx.lineTo(p2X, Y); ctx.stroke();
-            ctx.setLineDash([]);
-            
-            // Draw Entangled Qubits pulsing together
-            const syncPulse = Math.sin(time * 5);
-            [p1X, p2X].forEach(x => {
-                const glow = 15 + syncPulse * 10;
-                ctx.shadowColor = '#bf00ff'; ctx.shadowBlur = glow;
-                ctx.fillStyle = '#bf00ff';
-                ctx.beginPath(); ctx.arc(x, Y, 30, 0, Math.PI * 2); ctx.fill();
-                
-                // Orbiting electrons
-                for(let i=0; i<2; i++) {
-                    const orbX = x + Math.cos(time * 3 + (i * Math.PI)) * 60;
-                    const orbY = Y + Math.sin(time * 3 + (i * Math.PI)) * 20;
-                    ctx.fillStyle = 'white';
-                    ctx.beginPath(); ctx.arc(orbX, orbY, 4, 0, Math.PI * 2); ctx.fill();
-                }
-            });
-        `
-    },
-    {
-        "order": 3,
-        "text": "3. Interference: Collapsing waves into the correct result.",
-        "duration": 6,
-        "canvas_code": `
-            ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, 800, 600);
-            
-            // Interference Waves
-            ctx.lineWidth = 2;
-            for(let i=0; i<10; i++) {
-                const waveY = 100 + i * 40;
-                ctx.beginPath();
-                ctx.moveTo(0, waveY);
-                for(let x=0; x<800; x+=10) {
-                    // Constructive and Destructive Interference simulation
-                    const amp = (i === 5) ? 40 : 10; // Peak result at row 5
-                    const freq = 0.05;
-                    const y = waveY + Math.sin(x * freq + time * 10) * amp;
-                    ctx.lineTo(x, y);
-                }
-                ctx.strokeStyle = (i === 5) ? '#39ff14' : 'rgba(0, 255, 255, 0.2)';
-                ctx.stroke();
-            }
-            
-            // Final Measured Value
-            if (time % 2 > 1.5) {
-                ctx.shadowColor = '#39ff14'; ctx.shadowBlur = 30;
-                ctx.fillStyle = '#39ff14';
-                ctx.font = "bold 60px Arial";
-                ctx.fillText("RESULT: 1", 400, 520);
-            }
-        `
+    <div class="workspace">
+        <canvas id="videoCanvas" width="680" height="400"></canvas>
+        <video id="playback" class="hidden" controls></video>
+    </div>
+
+    <div id="status">Enter a prompt to begin.</div>
+
+    <div id="postProcess" class="controls">
+        <button id="replayBtn">Replay</button>
+        <button id="downloadBtn" style="border-color: #00f2ff; color: #00f2ff;">Download WebM</button>
+    </div>
+
+<script>
+const canvas = document.getElementById('videoCanvas');
+const ctx = canvas.getContext('2d');
+const videoPlayer = document.getElementById('playback');
+const fetchBtn = document.getElementById('fetchBtn');
+const postProcess = document.getElementById('postProcess');
+const status = document.getElementById('status');
+const promptInput = document.getElementById('promptInput');
+
+const W = canvas.width;
+const H = canvas.height;
+let videoUrl = null;
+let sceneData = [];
+
+async function startWorkflow() {
+    const prompt = promptInput.value.trim();
+    if (!prompt) {
+        status.innerText = "Please enter a topic.";
+        return;
     }
-];
 
-        (async () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 800; canvas.height = 600;
-            const ctx = canvas.getContext('2d');
-            document.body.appendChild(canvas);
+    try {
+        fetchBtn.disabled = true;
+        status.innerText = "Connecting to AI Backend...";
+        
+        // Adjust this URL to match your actual FastAPI route (excluding the /docs part)
+        // Example: http://127.0.0.1:8000/video/YourPrompt
+        const response = await fetch(`http://127.0.0.1:8000/video/${encodeURIComponent(prompt)}`);
+        
+        if (!response.ok) throw new Error("Backend error or Prompt rejected.");
+        
+        sceneData = await response.json();
+        status.innerText = "Data received. Starting Render...";
+        
+        await generateVideo();
+        
+    } catch (err) {
+        status.innerText = "Error: " + err.message;
+        console.error(err);
+    } finally {
+        fetchBtn.disabled = false;
+    }
+}
 
-            const stream = canvas.captureStream(30); 
-            const recordedChunks = [];
-            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-            const recorder = new MediaRecorder(stream, { mimeType });
+async function generateVideo() {
+    postProcess.style.display = 'none';
+    videoPlayer.classList.add('hidden');
+    canvas.classList.remove('hidden');
+    
+    const chunks = [];
+    const stream = canvas.captureStream(30); 
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
 
-            recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-            const stopPromise = new Promise(resolve => recorder.onstop = resolve);
-            recorder.start();
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => {
+        const videoBlob = new Blob(chunks, { type: 'video/webm' });
+        videoUrl = URL.createObjectURL(videoBlob);
+        videoPlayer.src = videoUrl;
+        status.innerText = "Video Rendered Successfully!";
+        postProcess.style.display = 'flex';
+    };
 
-            let currentScene = null;
-            let isRunning = true;
-            let time = 0;
-            let lastTimestamp = 0;
+    recorder.start();
 
-            function draw(timestamp) {
-                if (!isRunning) return;
-                if (!lastTimestamp) lastTimestamp = timestamp;
-                time += (timestamp - lastTimestamp) / 1000;
-                lastTimestamp = timestamp;
+    for (const scene of sceneData) {
+        const durationMs = scene.duration * 1000;
+        const startTime = performance.now();
+        status.innerText = `Drawing: ${scene.text}`;
 
-                ctx.shadowBlur = 0; // Reset global state
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+        await new Promise(resolve => {
+            function renderFrame(now) {
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / durationMs, 1);
 
-                if (currentScene) {
-                    try {
-                        // Pass 'time' to the function
-                        new Function('ctx', 'time', currentScene.canvas_code)(ctx, time);
-                    } catch (e) { console.error(e); }
+                ctx.clearRect(0, 0, W, H);
+                ctx.setLineDash([]);
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1.0;
 
-                    ctx.shadowBlur = 10; ctx.shadowColor = "black";
-                    ctx.fillStyle = "white"; ctx.font = "bold 24px Arial";
-                    ctx.textAlign = "center";
-                    ctx.fillText(currentScene.text, canvas.width / 2, canvas.height - 40);
+                try {
+                    { // Block scope for 'let' declarations in AI code
+                        eval(scene.canvas_code);
+                    }
+                } catch (err) {
+                    console.error("Canvas Script Error:", err);
                 }
-                requestAnimationFrame(draw);
+
+                if (elapsed < durationMs) {
+                    requestAnimationFrame(renderFrame);
+                } else {
+                    resolve();
+                }
             }
-            requestAnimationFrame(draw);
+            requestAnimationFrame(renderFrame);
+        });
+    }
 
-            for (const scene of response.sort((a, b) => a.order - b.order)) {
-                currentScene = scene;
-                await new Promise(r => setTimeout(r, scene.duration * 1000));
-            }
+    setTimeout(() => recorder.stop(), 500);
+}
 
-            isRunning = false;
-            recorder.stop();
-            await stopPromise;
+fetchBtn.addEventListener('click', startWorkflow);
 
-            const videoUrl = URL.createObjectURL(new Blob(recordedChunks, { type: mimeType }));
-            const finalVideo = document.createElement('video');
-            finalVideo.controls = true; finalVideo.src = videoUrl; finalVideo.width = 800;
-            
-            loading.style.display = 'none';
-            container.appendChild(finalVideo);
-            finalVideo.play();
-        })();
-    </script>
+// Keyboard support
+promptInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') startWorkflow();
+});
+
+document.getElementById('replayBtn').addEventListener('click', () => {
+    canvas.classList.add('hidden');
+    videoPlayer.classList.remove('hidden');
+    videoPlayer.play();
+});
+
+document.getElementById('downloadBtn').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = videoUrl;
+    a.download = 'ai_video.webm';
+    a.click();
+});
+</script>
 </body>
 </html>
