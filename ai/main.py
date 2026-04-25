@@ -1,51 +1,21 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Header
+from utils.respond_canvas import respond_canvas
 
-from app.routes import health, users
-from config import settings
+# Initialize the app
+app = FastAPI()
 
-# Lifespan context manager for startup/shutdown events
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    print("Starting up application...")
-    yield
-    # Shutdown
-    print("Shutting down application...")
-
-# Create FastAPI app instance
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    description=settings.PROJECT_DESCRIPTION,
-    version=settings.VERSION,
-    lifespan=lifespan
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routers
-app.include_router(health.router, prefix="/api", tags=["health"])
-app.include_router(users.router, prefix="/api/users", tags=["users"])
-
-# Root endpoint
 @app.get("/")
-async def root():
-    return {"message": "Welcome to FastAPI Boilerplate"}
+def read_root():
+    return {"message": "Welcome to your FastAPI app!"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host=settings.HOST,
-        port=settings.PORT,
-        reload=settings.RELOAD,
-        log_level=settings.LOG_LEVEL.lower()
-    )
+@app.get("/video/{prompt}")
+def generate_video(prompt: str, x_api_key: str = Header(None)):
+    """Generate video from prompt with API key validation"""
+    if not x_api_key:
+        raise HTTPException(
+            status_code=401, 
+            detail="API key is required. Please provide 'x-api-key' header."
+        )
+    
+    response = respond_canvas(x_api_key, prompt)
+    return response

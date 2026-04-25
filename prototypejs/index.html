@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Network Renderer</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #050505; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        #loading { padding: 20px; font-size: 1.2rem; letter-spacing: 1px; color: #00f2ff; }
+        #videoContainer { margin-top: 20px; border: 1px solid #333; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        canvas { display: none; } /* Internal working canvas */
+    </style>
+</head>
+<body>
+    <div id="loading">PROCESSING NEURAL LAYERS...</div>
+    <div id="videoContainer"></div>
+
+    <script>
+        const loading = document.getElementById('loading');
+        const container = document.getElementById('videoContainer');
+
+        const response = [
+    {
+        "order": 1,
+        "text": "1. Superposition: Qubits exist in multiple states at once.",
+        "duration": 6,
+        "canvas_code": `
+            ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, 800, 600);
+            const CX = 400; const CY = 300;
+            
+            // Draw a spinning Bloch Sphere skeleton
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(CX, CY, 150, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(CX, CY, 150, 50, 0, 0, Math.PI * 2); ctx.stroke();
+            
+            // The Qubit State Vector moving in superposition
+            const vectorX = CX + Math.sin(time * 2) * 150 * Math.cos(time);
+            const vectorY = CY + Math.cos(time * 2) * 150;
+            
+            ctx.shadowColor = '#00f2ff'; ctx.shadowBlur = 15;
+            ctx.strokeStyle = '#00f2ff';
+            ctx.beginPath(); ctx.moveTo(CX, CY); ctx.lineTo(vectorX, vectorY); ctx.stroke();
+            
+            ctx.fillStyle = '#00f2ff';
+            ctx.beginPath(); ctx.arc(vectorX, vectorY, 8, 0, Math.PI * 2); ctx.fill();
+            
+            // "Ghost" states representing 0 and 1
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = 'white';
+            ctx.fillText('|0>', CX, CY - 170);
+            ctx.fillText('|1>', CX, CY + 180);
+            ctx.globalAlpha = 1.0;
+        `
+    },
+    {
+        "order": 2,
+        "text": "2. Entanglement: Qubits become perfectly synchronized.",
+        "duration": 8,
+        "canvas_code": `
+            ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, 800, 600);
+            const p1X = 250; const p2X = 550; const Y = 300;
+            
+            // Draw the "Quantum Link"
+            ctx.strokeStyle = 'rgba(191, 0, 255, 0.3)';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([10, 15]);
+            ctx.lineDashOffset = -time * 50;
+            ctx.beginPath(); ctx.moveTo(p1X, Y); ctx.lineTo(p2X, Y); ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw Entangled Qubits pulsing together
+            const syncPulse = Math.sin(time * 5);
+            [p1X, p2X].forEach(x => {
+                const glow = 15 + syncPulse * 10;
+                ctx.shadowColor = '#bf00ff'; ctx.shadowBlur = glow;
+                ctx.fillStyle = '#bf00ff';
+                ctx.beginPath(); ctx.arc(x, Y, 30, 0, Math.PI * 2); ctx.fill();
+                
+                // Orbiting electrons
+                for(let i=0; i<2; i++) {
+                    const orbX = x + Math.cos(time * 3 + (i * Math.PI)) * 60;
+                    const orbY = Y + Math.sin(time * 3 + (i * Math.PI)) * 20;
+                    ctx.fillStyle = 'white';
+                    ctx.beginPath(); ctx.arc(orbX, orbY, 4, 0, Math.PI * 2); ctx.fill();
+                }
+            });
+        `
+    },
+    {
+        "order": 3,
+        "text": "3. Interference: Collapsing waves into the correct result.",
+        "duration": 6,
+        "canvas_code": `
+            ctx.fillStyle = '#050510'; ctx.fillRect(0, 0, 800, 600);
+            
+            // Interference Waves
+            ctx.lineWidth = 2;
+            for(let i=0; i<10; i++) {
+                const waveY = 100 + i * 40;
+                ctx.beginPath();
+                ctx.moveTo(0, waveY);
+                for(let x=0; x<800; x+=10) {
+                    // Constructive and Destructive Interference simulation
+                    const amp = (i === 5) ? 40 : 10; // Peak result at row 5
+                    const freq = 0.05;
+                    const y = waveY + Math.sin(x * freq + time * 10) * amp;
+                    ctx.lineTo(x, y);
+                }
+                ctx.strokeStyle = (i === 5) ? '#39ff14' : 'rgba(0, 255, 255, 0.2)';
+                ctx.stroke();
+            }
+            
+            // Final Measured Value
+            if (time % 2 > 1.5) {
+                ctx.shadowColor = '#39ff14'; ctx.shadowBlur = 30;
+                ctx.fillStyle = '#39ff14';
+                ctx.font = "bold 60px Arial";
+                ctx.fillText("RESULT: 1", 400, 520);
+            }
+        `
+    }
+];
+
+        (async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 800; canvas.height = 600;
+            const ctx = canvas.getContext('2d');
+            document.body.appendChild(canvas);
+
+            const stream = canvas.captureStream(30); 
+            const recordedChunks = [];
+            const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+            const recorder = new MediaRecorder(stream, { mimeType });
+
+            recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            const stopPromise = new Promise(resolve => recorder.onstop = resolve);
+            recorder.start();
+
+            let currentScene = null;
+            let isRunning = true;
+            let time = 0;
+            let lastTimestamp = 0;
+
+            function draw(timestamp) {
+                if (!isRunning) return;
+                if (!lastTimestamp) lastTimestamp = timestamp;
+                time += (timestamp - lastTimestamp) / 1000;
+                lastTimestamp = timestamp;
+
+                ctx.shadowBlur = 0; // Reset global state
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (currentScene) {
+                    try {
+                        // Pass 'time' to the function
+                        new Function('ctx', 'time', currentScene.canvas_code)(ctx, time);
+                    } catch (e) { console.error(e); }
+
+                    ctx.shadowBlur = 10; ctx.shadowColor = "black";
+                    ctx.fillStyle = "white"; ctx.font = "bold 24px Arial";
+                    ctx.textAlign = "center";
+                    ctx.fillText(currentScene.text, canvas.width / 2, canvas.height - 40);
+                }
+                requestAnimationFrame(draw);
+            }
+            requestAnimationFrame(draw);
+
+            for (const scene of response.sort((a, b) => a.order - b.order)) {
+                currentScene = scene;
+                await new Promise(r => setTimeout(r, scene.duration * 1000));
+            }
+
+            isRunning = false;
+            recorder.stop();
+            await stopPromise;
+
+            const videoUrl = URL.createObjectURL(new Blob(recordedChunks, { type: mimeType }));
+            const finalVideo = document.createElement('video');
+            finalVideo.controls = true; finalVideo.src = videoUrl; finalVideo.width = 800;
+            
+            loading.style.display = 'none';
+            container.appendChild(finalVideo);
+            finalVideo.play();
+        })();
+    </script>
+</body>
+</html>
