@@ -34,7 +34,8 @@ RULES:
 - Each scene duration: 5 to 7 seconds as required by the input.
 - narration: 1-2 clear, friendly sentences spoken during the scene
 - draw_instructions: be VERY specific about what to draw, where, what colors, what labels, and how it animates using the 'progress' variable (0 to 1). Think visually. Reference specific positions like 'center', 'top-left', 'right side'. Mention exact colors. Describe motion clearly.
-- Make scenes build on each other visually to tell a story
+- Consider color contrast and design sense.
+- Make scenes build on each other visually to tell a story. It should properly explain the concept to someone. 
 - Return ONLY the JSON, no markdown, no explanation
 """
 def plan_scenes(topic: str) -> dict:
@@ -53,31 +54,31 @@ def plan_scenes(topic: str) -> dict:
 # AGENT 2 - Canvas Code Generator
 # Generates actual JS canvas drawing code for each scene
 # ---------------------------------------------------------------------------
-CANVAS_PROMPT = """You are an expert HTML Canvas 2D animator.
+# CANVAS_PROMPT = """You are an expert HTML Canvas 2D animator.
 
-Write the JavaScript body of this function:
-  function drawScene(ctx, W, H, progress) { YOUR CODE HERE }
+# Write the JavaScript body of this function:
+#   function drawScene(ctx, W, H, progress) { YOUR CODE HERE }
 
-Variables:
-- ctx: CanvasRenderingContext2D
-- W: canvas width (680)
-- H: canvas height (400)  
-- progress: 0.0 to 1.0 (how far through the scene we are)
+# Variables:
+# - ctx: CanvasRenderingContext2D
+# - W: canvas width (680)
+# - H: canvas height (400)  
+# - progress: 0.0 to 1.0 (how far through the scene we are)
 
-STRICT RULES:
-1. Return ONLY raw JS code. No function wrapper. No backticks. No markdown. No comments.
-2. Do NOT call ctx.clearRect (already done before your code runs)
-3. No fetch, eval, document, window, or DOM access
-4. All positions must use W and H (e.g. W*0.5 for center-x)
-5. Use progress for ALL animations (e.g. opacity = progress, x = W * 0.1 + progress * W * 0.4)
-6. Draw backgrounds with ctx.fillRect(0,0,W,H) first
-7. Use ctx.save() / ctx.restore() around transformed elements
-8. For text: always set ctx.textAlign and ctx.textBaseline before ctx.fillText
-9. Make it VISUALLY RICH: gradients, glows (shadowBlur), smooth curves, multiple elements
-10. Easing: use eased = t < 0.5 ? 2*t*t : -1+(4-2*t)*t where t = progress
+# STRICT RULES:
+# 1. Return ONLY raw JS code. No function wrapper. No backticks. No markdown. No comments.
+# 2. Do NOT call ctx.clearRect (already done before your code runs)
+# 3. No fetch, eval, document, window, or DOM access
+# 4. All positions must use W and H (e.g. W*0.5 for center-x)
+# 5. Use progress for ALL animations (e.g. opacity = progress, x = W * 0.1 + progress * W * 0.4)
+# 6. Draw backgrounds with ctx.fillRect(0,0,W,H) first
+# 7. Use ctx.save() / ctx.restore() around transformed elements
+# 8. For text: always set ctx.textAlign and ctx.textBaseline before ctx.fillText
+# 9. Make it VISUALLY RICH: gradients, glows (shadowBlur), smooth curves, multiple elements
+# 10. Easing: use eased = t < 0.5 ? 2*t*t : -1+(4-2*t)*t where t = progress
 
-Draw instructions for this scene:
-"""
+# Draw instructions for this scene:
+# """
 
 def generate_canvas_code(scene: dict, previous_error: str = None, canvas_width: int = 680, canvas_height: int = 400) -> str:
     instructions = scene["draw_instructions"]
@@ -108,7 +109,7 @@ STRICT RULES:
 8. For text: always set ctx.textAlign and ctx.textBaseline before ctx.fillText
 9. Make it VISUALLY RICH: gradients, glows (shadowBlur), smooth curves, multiple elements
 10. Easing: use eased = t < 0.5 ? 2*t*t : -1+(4-2*t)*t where t = progress
-11. Use relevant animations. Try to make animations as relevant to real as possible. 
+11. Use relevant animations. Try to make animations as relevant to reallife as possible. 
 
 Draw instructions for this scene:
 """
