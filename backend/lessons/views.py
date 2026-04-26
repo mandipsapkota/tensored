@@ -4,11 +4,14 @@ import requests
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from .models import Session
 from .serializers import SessionSerializer
 
 AI_SERVICE_URL = "http://localhost:8001"
 AI_TEXT_SERVICE_URL = "http://localhost:8001/response/generate"
+AI_QUIZ_SERVICE_URL = "http://localhost:8001/quiz/generate"
+AI_QUIZ_FEEDBACK_SERVICE_URL = "http://localhost:8001/quiz/feedback"
 
 
 def normalize_mode(value):
@@ -197,3 +200,71 @@ class SessionDetailView(generics.RetrieveUpdateDestroyAPIView):
             
         serializer = self.get_serializer(session)
         return Response(serializer.data)
+
+
+class SessionQuizGenerateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            session = Session.objects.get(pk=pk, user=request.user)
+        except Session.DoesNotExist:
+            return Response({"error": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        ensure_history_format(session)
+        history = session.animation_data.get("history", [])
+
+        conversation_history = []
+        for item in history:
+            mode = item.get("mode")
+            if mode == "text":
+                if item.get("prompt"):
+                    conversation_history.append({"role": "user", "content": item.get("prompt")})
+                if item.get("response"):
+                    conversation_history.append({"role": "assistant", "content": item.get("response")})
+            else:
+                if item.get("prompt"):
+                    conversation_history.append({"role": "user", "content": item.get("prompt")})
+
+        params = {
+            "conversation_history": json.dumps(conversation_history),
+            "topic": session.title,
+        }
+
+        try:
+            ai_response = requests.post(AI_QUIZ_SERVICE_URL, params=params, timeout=300)
+            ai_response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return Response({"error": f"Failed to generate quiz: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response({"quiz": ai_response.json()}, status=status.HTTP_200_OK)
+
+
+class SessionQuizFeedbackView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            session = Session.objects.get(pk=pk, user=request.user)
+        except Session.DoesNotExist:
+            return Response({"error": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        user_response = request.data.get("user_response")
+        if user_response is None:
+            return Response({"error": "user_response is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        params = {
+            "user_response": json.dumps(user_response),
+            "topic": session.title,
+        }
+
+        try:
+            ai_response = requests.post(AI_QUIZ_FEEDBACK_SERVICE_URL, params=params, timeout=300)
+            ai_response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return Response({"error": f"Failed to generate quiz feedback: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        payload = ai_response.json()
+        if isinstance(payload, dict):
+            return Response(payload, status=status.HTTP_200_OK)
+        return Response({"feedback": str(payload)}, status=status.HTTP_200_OK)

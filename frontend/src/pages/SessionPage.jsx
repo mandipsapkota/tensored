@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { MOCK_PERFORMANCE } from '../api/mockData';
 import AnimationPlayer from '../components/learning/AnimationPlayer';
 import SceneController from '../components/learning/SceneController';
+import QuestionCard from '../components/quiz/QuestionCard';
 import { Send, Bot, User, BrainCircuit, Trophy, Target, Clock, Loader2, Play } from 'lucide-react';
 
 const getHistoryFromSession = (data) => {
@@ -67,6 +68,16 @@ export default function SessionPage() {
   const [sessionData, setSessionData] = useState(null);
   const totalDuration = scenes.reduce((acc, s) => acc + (Number(s.duration) || 5), 0);
   const [videoEnded, setVideoEnded] = useState(false);
+
+  // Quiz and analysis state
+  const [quizQuestions, setQuizQuestions] = useState([]);
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [quizAnswers, setQuizAnswers] = useState({});
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmittingQuiz, setIsSubmittingQuiz] = useState(false);
+  const [quizFeedback, setQuizFeedback] = useState(MOCK_PERFORMANCE.aiFeedback);
+  const [quizScore, setQuizScore] = useState(MOCK_PERFORMANCE.score);
 
   const initialTitle = location.state?.title;
   const initialDescription = location.state?.description;
@@ -313,6 +324,116 @@ export default function SessionPage() {
     setIsPlaying(!isPlaying);
   };
 
+  // ---------- QUIZ LOGIC ----------
+  const currentQuestion = quizQuestions[currentQuestionIdx];
+  const selectedOption = quizAnswers[currentQuestionIdx];
+
+  const handleQuizSelect = (idx) => {
+    if (isSubmitted) return;
+    setQuizAnswers((prev) => ({ ...prev, [currentQuestionIdx]: idx }));
+  };
+
+  const handleQuizSubmit = () => {
+    if (selectedOption === undefined || selectedOption === null) return;
+    setIsSubmitted(true);
+  };
+
+  const generateQuiz = async () => {
+    if (id === 'new') return;
+    setIsGeneratingQuiz(true);
+
+    try {
+      const token = localStorage.getItem('animax_token');
+      const res = await fetch(`http://localhost:8000/api/lessons/sessions/${id}/quiz/generate/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to generate quiz');
+      }
+
+      const data = await res.json();
+      const normalized = (data.quiz || []).map((q) => ({
+        question: q.question,
+        options: q.options,
+        correctAnswer: Math.max(0, Math.min(3, Number(q.correct || 1) - 1)),
+      }));
+
+      if (!normalized.length) {
+        throw new Error('No quiz questions returned');
+      }
+
+      setQuizQuestions(normalized);
+      setCurrentQuestionIdx(0);
+      setQuizAnswers({});
+      setIsSubmitted(false);
+      setPhase('quiz');
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'ai', text: 'Unable to generate quiz right now. Please try again shortly.' }]);
+    } finally {
+      setIsGeneratingQuiz(false);
+    }
+  };
+
+  const handleQuizNext = async () => {
+    if (!isSubmitted) return;
+
+    if (currentQuestionIdx < quizQuestions.length - 1) {
+      setCurrentQuestionIdx((prev) => prev + 1);
+      setIsSubmitted(false);
+      return;
+    }
+
+    const userResponse = quizQuestions.map((q, idx) => {
+      const selected = quizAnswers[idx];
+      return {
+        question: q.question,
+        answer: selected !== undefined && selected !== null ? q.options[selected] : 'No answer',
+        isCorrect: selected === q.correctAnswer,
+      };
+    });
+
+    const correctCount = userResponse.filter((item) => item.isCorrect).length;
+    const computedScore = Math.round((correctCount / Math.max(1, quizQuestions.length)) * 100);
+    setQuizScore(computedScore);
+
+    setIsSubmittingQuiz(true);
+    try {
+      const token = localStorage.getItem('animax_token');
+      const res = await fetch(`http://localhost:8000/api/lessons/sessions/${id}/quiz/feedback/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ user_response: userResponse }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const feedbackText = data.feedback || 'You completed the quiz. Review your answers and continue practicing.';
+        setQuizFeedback([
+          { type: computedScore >= 70 ? 'positive' : 'improvement', message: feedbackText },
+        ]);
+      } else {
+        setQuizFeedback([
+          { type: computedScore >= 70 ? 'positive' : 'improvement', message: 'Quiz completed. Feedback service is temporarily unavailable.' },
+        ]);
+      }
+    } catch (err) {
+      setQuizFeedback([
+        { type: computedScore >= 70 ? 'positive' : 'improvement', message: 'Quiz completed. Feedback service is temporarily unavailable.' },
+      ]);
+    } finally {
+      setIsSubmittingQuiz(false);
+      setPhase('analysis');
+    }
+  };
+
   return (
     <div className="flex flex-col lg:flex-row h-screen pt-16 bg-background">
       
@@ -467,19 +588,57 @@ export default function SessionPage() {
               <p className="text-gray-400 text-sm mb-6 max-w-sm">
                 {isGenerating 
                   ? "Your video is currently being generated by the AI..." 
-                  : "Watch the video above completely. (Quiz generation is disabled for now)."}
+                  : "Watch the video above completely, then generate your quiz."}
               </p>
               <button 
-                onClick={() => setPhase('analysis')}
-                disabled={!videoEnded || isGenerating}
+                onClick={generateQuiz}
+                disabled={!videoEnded || isGenerating || isGeneratingQuiz}
                 className="px-8 py-3 bg-primary hover:bg-blue-600 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-full font-bold transition-colors shadow-[0_0_20px_rgba(59,130,246,0.3)] disabled:shadow-none flex items-center gap-2"
               >
-                {isGenerating ? <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</> : videoEnded ? "View Summary" : "Finish Video to Unlock"}
+                {isGeneratingQuiz ? <><Loader2 className="w-5 h-5 animate-spin" /> Generating Quiz...</> : videoEnded ? "Start Quiz" : "Finish Video to Unlock"}
               </button>
             </div>
           )}
 
-          {/* Quiz phase removed completely */}
+          {phase === 'quiz' && currentQuestion && (
+            <div className="flex-1 p-6 overflow-y-auto">
+              <div className="max-w-3xl mx-auto">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold">Quiz Time</h3>
+                  <span className="text-sm text-gray-400">Question {currentQuestionIdx + 1} of {quizQuestions.length}</span>
+                </div>
+
+                <QuestionCard
+                  question={currentQuestion.question}
+                  options={currentQuestion.options}
+                  selectedOption={selectedOption}
+                  onSelect={handleQuizSelect}
+                  isSubmitted={isSubmitted}
+                  correctAnswerIndex={currentQuestion.correctAnswer}
+                />
+
+                <div className="mt-6 flex gap-3">
+                  {!isSubmitted ? (
+                    <button
+                      onClick={handleQuizSubmit}
+                      disabled={selectedOption === undefined || selectedOption === null}
+                      className="flex-1 py-3 bg-primary hover:bg-blue-600 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-xl font-semibold transition-colors"
+                    >
+                      Submit Answer
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleQuizNext}
+                      disabled={isSubmittingQuiz}
+                      className="flex-1 py-3 bg-primary hover:bg-blue-600 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-xl font-semibold transition-colors"
+                    >
+                      {isSubmittingQuiz ? 'Submitting...' : currentQuestionIdx < quizQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {phase === 'analysis' && (
             <div className="flex-1 p-6 overflow-y-auto">
@@ -498,7 +657,7 @@ export default function SessionPage() {
                   </div>
                   <div>
                     <p className="text-sm text-gray-400">Score</p>
-                    <p className="text-2xl font-bold">{MOCK_PERFORMANCE.score}%</p>
+                    <p className="text-2xl font-bold">{quizScore}%</p>
                   </div>
                 </div>
                 <div className="bg-gray-900 border border-gray-800 p-4 rounded-2xl flex items-center gap-4">
@@ -515,7 +674,7 @@ export default function SessionPage() {
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-8">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Bot className="w-5 h-5 text-primary"/> AI Feedback</h3>
                 <div className="space-y-3">
-                  {MOCK_PERFORMANCE.aiFeedback.map((fb, idx) => (
+                  {quizFeedback.map((fb, idx) => (
                     <div key={idx} className={`p-4 rounded-xl border ${fb.type === 'positive' ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'}`}>
                       {fb.message}
                     </div>
