@@ -26,7 +26,7 @@ def read_root():
 
 # GENERATE VIDEO
 @app.get("/video/{prompt}")
-def generate_video(prompt: str, W: int = 680, H: int = 400):
+def generate_video(prompt: str, W: int = 680, H: int = 400, conversation_history: str = "" , sessionTopic:str = ""):
     """Generate video from prompt with custom canvas dimensions
     
     Args:
@@ -35,7 +35,7 @@ def generate_video(prompt: str, W: int = 680, H: int = 400):
         H: Canvas height (default: 400)
     """
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    response = respond_canvas(APIKEY=openai_api_key, PROMPT=prompt, W=W, H=H)
+    response = respond_canvas(APIKEY=openai_api_key, PROMPT=prompt, W=W, H=H , conversation_history=conversation_history, sessionTopic=sessionTopic)
     return response
 
 # GENERATE TEXT RESPONSE

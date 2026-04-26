@@ -169,7 +169,7 @@ def validate_code(code: str) -> tuple:
 # MAIN ORCHESTRATOR - respond_canvas
 # Takes user prompt + API key and returns formatted video scenes
 # ---------------------------------------------------------------------------
-def respond_canvas(APIKEY: str, PROMPT: str, W: int = 680, H: int = 400) -> List[Dict[str, Any]]:
+def respond_canvas(APIKEY: str, PROMPT: str, W: int = 680, H: int = 400, conversation_history: str = "", sessionTopic:str = "") -> List[Dict[str, Any]]:
     """
     Main workflow function that orchestrates the video generation pipeline.
     
@@ -198,7 +198,7 @@ def respond_canvas(APIKEY: str, PROMPT: str, W: int = 680, H: int = 400) -> List
     
     try:
         # Step 1: Plan scenes from user prompt
-        print(f"Planning scenes for prompt: {PROMPT}")
+        print(f"Planning scenes for prompt: {PROMPT}. Consider conversation history : {conversation_history} and topic {sessionTopic}")
         plan = plan_scenes(PROMPT)
         scenes = plan.get("scenes", [])
         
