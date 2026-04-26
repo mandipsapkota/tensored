@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from .models import Session
 from .serializers import SessionSerializer
+from chat.models import ChatExchange
 
 AI_SERVICE_URL = "http://localhost:8001"
 AI_TEXT_SERVICE_URL = "http://localhost:8001/response/generate"
@@ -17,6 +18,17 @@ AI_QUIZ_FEEDBACK_SERVICE_URL = "http://localhost:8001/quiz/feedback"
 def normalize_mode(value):
     mode = (value or "animate").strip().lower()
     return mode if mode in ("animate", "text") else "animate"
+
+
+def extract_chat_exchange_history(session):
+    exchanges = ChatExchange.objects.filter(session=session).order_by('created_at')
+    return [
+        {
+            "user_prompt": item.user_prompt,
+            "backend_response": item.backend_response,
+        }
+        for item in exchanges
+    ]
 
 
 def extract_text_entries(history):
@@ -32,9 +44,13 @@ def extract_text_entries(history):
     return entries
 
 
-def call_animation_service(prompt):
+def call_animation_service(prompt, conversation_history=None, session_topic=""):
     encoded_prompt = urllib.parse.quote(prompt)
-    ai_response = requests.get(f"{AI_SERVICE_URL}/video/{encoded_prompt}", timeout=300)
+    params = {
+        "conversation_history": json.dumps(conversation_history or []),
+        "sessionTopic": session_topic,
+    }
+    ai_response = requests.get(f"{AI_SERVICE_URL}/video/{encoded_prompt}", params=params, timeout=300)
     ai_response.raise_for_status()
     ai_data = ai_response.json()
 
@@ -128,7 +144,7 @@ class SessionListCreateView(generics.ListCreateAPIView):
                     "response": text_response,
                 }
             else:
-                scenes = call_animation_service(prompt)
+                scenes = call_animation_service(prompt, conversation_history=[], session_topic=title)
                 history_entry = {
                     "mode": "animate",
                     "prompt": prompt,
@@ -148,6 +164,13 @@ class SessionListCreateView(generics.ListCreateAPIView):
             title=title,
             description=description,
             animation_data=animation_data
+        )
+
+        ChatExchange.objects.create(
+            session=session,
+            mode=mode,
+            user_prompt=prompt,
+            backend_response=text_response if mode == "text" else f"Generated animation with {len(history_entry.get('scenes', []))} scenes.",
         )
 
         serializer = self.get_serializer(session)
@@ -182,13 +205,20 @@ class SessionDetailView(generics.RetrieveUpdateDestroyAPIView):
                         "prompt": new_prompt,
                         "response": text_response,
                     })
+                    backend_response = text_response
                 else:
-                    new_scenes = call_animation_service(new_prompt)
+                    chat_history = extract_chat_exchange_history(session)
+                    new_scenes = call_animation_service(
+                        new_prompt,
+                        conversation_history=chat_history,
+                        session_topic=session.title,
+                    )
                     history.append({
                         "mode": "animate",
                         "prompt": new_prompt,
                         "scenes": new_scenes,
                     })
+                    backend_response = f"Generated animation with {len(new_scenes)} scenes."
             except requests.exceptions.RequestException as e:
                 return Response({"error": f"Failed to generate lesson from AI service: {str(e)}"}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -197,6 +227,13 @@ class SessionDetailView(generics.RetrieveUpdateDestroyAPIView):
                 
             session.description = (session.description or "") + f"\n\nFollow-up: {new_prompt}"
             session.save()
+
+            ChatExchange.objects.create(
+                session=session,
+                mode=mode,
+                user_prompt=new_prompt,
+                backend_response=backend_response,
+            )
             
         serializer = self.get_serializer(session)
         return Response(serializer.data)

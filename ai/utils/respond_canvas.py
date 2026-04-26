@@ -15,7 +15,7 @@ client = None
 # ---------------------------------------------------------------------------
 PLANNER_PROMPT = """You are an animation director creating educational explainer videos.
 
-Given a topic, return ONLY a JSON object like this:
+Given a topic, optional session topic, and optional prior conversation history, return ONLY a JSON object like this:
 
 {
   "title": "How Photosynthesis Works",
@@ -36,16 +36,48 @@ RULES:
 - draw_instructions: be VERY specific about what to draw, where, what colors, what labels, and how it animates using the 'progress' variable (0 to 1). Think visually. Reference specific positions like 'center', 'top-left', 'right side'. Mention exact colors. Describe motion clearly.
 - Consider color contrast and design sense.
 - Make scenes build on each other visually to tell a story. It should properly explain the concept to someone. 
+- Use the provided conversation history to avoid repeating what was already explained and to continue from previous context.
+- If session topic is provided, keep the animation focused on that curriculum and frame the current prompt as a continuation.
 - Return ONLY the JSON, no markdown, no explanation
 """
-def plan_scenes(topic: str) -> dict:
+
+
+def _normalize_history_input(conversation_history):
+    if isinstance(conversation_history, str):
+        if not conversation_history.strip():
+            return []
+        try:
+            parsed = json.loads(conversation_history)
+            return parsed if isinstance(parsed, list) else []
+        except Exception:
+            return []
+    return conversation_history if isinstance(conversation_history, list) else []
+
+
+def plan_scenes(topic: str, conversation_history=None, session_topic: str = "") -> dict:
+    history = _normalize_history_input(conversation_history)
+    compact_history = []
+    for item in history[-8:]:
+        if isinstance(item, dict):
+            compact_history.append({
+                "user_prompt": item.get("user_prompt", ""),
+                "backend_response": item.get("backend_response", ""),
+            })
+
     resp = client.chat.completions.create(
         model="gpt-4o",
         max_tokens=2000,
         response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": PLANNER_PROMPT},
-            {"role": "user", "content": f"Topic: {topic}"}
+            {
+                "role": "user",
+                "content": (
+                    f"Session Topic: {session_topic or 'N/A'}\n"
+                    f"Current Prompt: {topic}\n"
+                    f"Conversation History: {json.dumps(compact_history)}"
+                ),
+            }
         ]
     )
     return json.loads(resp.choices[0].message.content)
@@ -199,7 +231,7 @@ def respond_canvas(APIKEY: str, PROMPT: str, W: int = 680, H: int = 400, convers
     try:
         # Step 1: Plan scenes from user prompt
         print(f"Planning scenes for prompt: {PROMPT}. Consider conversation history : {conversation_history} and topic {sessionTopic}")
-        plan = plan_scenes(PROMPT)
+        plan = plan_scenes(PROMPT, conversation_history=conversation_history, session_topic=sessionTopic)
         scenes = plan.get("scenes", [])
         
         if not scenes:
