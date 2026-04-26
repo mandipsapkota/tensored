@@ -1,11 +1,46 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
-import useStore from '../store/useStore';
-import { MOCK_QUIZ, MOCK_PERFORMANCE } from '../api/mockData';
+import ReactMarkdown from 'react-markdown';
+import { MOCK_PERFORMANCE } from '../api/mockData';
 import AnimationPlayer from '../components/learning/AnimationPlayer';
 import SceneController from '../components/learning/SceneController';
-import QuestionCard from '../components/quiz/QuestionCard';
-import { Send, Bot, User, BrainCircuit, Trophy, Target, Clock, ArrowRight, Loader2, Play } from 'lucide-react';
+import { Send, Bot, User, BrainCircuit, Trophy, Target, Clock, Loader2, Play } from 'lucide-react';
+
+const getHistoryFromSession = (data) => {
+  if (data?.animation_data?.history) return data.animation_data.history;
+  if (data?.animation_data?.scenes) {
+    return [{ mode: 'animate', prompt: `${data.title} - ${data.description}`, scenes: data.animation_data.scenes }];
+  }
+  if (Array.isArray(data?.animation_data)) {
+    return [{ mode: 'animate', prompt: `${data.title} - ${data.description}`, scenes: data.animation_data }];
+  }
+  return [];
+};
+
+const getInitialAssistantMessage = (mode) => (
+  mode === 'text'
+    ? 'Welcome to your learning session! Choose Text to get tutor-style replies, or Animate for visual lessons.'
+    : 'Welcome to your learning session! Choose Animate for visual lessons, or Text for tutor-style replies.'
+);
+
+const buildMessagesFromHistory = (history) => {
+  const messages = [];
+  history.forEach((item, index) => {
+    const entryMode = item.mode || (item.scenes ? 'animate' : 'text');
+    const promptText = item.prompt || 'Prompt';
+
+    if (entryMode === 'animate') {
+      messages.push({ role: 'user', text: promptText, historyIndex: index, mode: 'animate' });
+      messages.push({ role: 'ai', text: 'Animation ready. You can play it from this message.' });
+      return;
+    }
+
+    messages.push({ role: 'user', text: promptText, mode: 'text' });
+    messages.push({ role: 'ai', text: item.response || 'No text response was returned for this prompt.', mode: 'text' });
+  });
+
+  return messages;
+};
 
 export default function SessionPage() {
   const { id } = useParams();
@@ -19,10 +54,11 @@ export default function SessionPage() {
 
   // Chat State
   const [messages, setMessages] = useState([
-    { role: 'ai', text: 'Welcome to your learning session! Provide a prompt below to generate an animated lesson.' }
+    { role: 'ai', text: getInitialAssistantMessage(location.state?.mode || 'animate') }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [responseMode, setResponseMode] = useState(location.state?.mode || 'animate');
 
   // Video State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -32,14 +68,13 @@ export default function SessionPage() {
   const totalDuration = scenes.reduce((acc, s) => acc + (Number(s.duration) || 5), 0);
   const [videoEnded, setVideoEnded] = useState(false);
 
-  // Quiz State (Disabled for now as requested)
-  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
-  const [quizAnswers, setQuizAnswers] = useState({});
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const questions = MOCK_QUIZ;
-
   const initialTitle = location.state?.title;
   const initialDescription = location.state?.description;
+  const initialMode = location.state?.mode || 'animate';
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   // Unlock Speech Synthesis globally on first interaction to bypass browser auto-play blocks
   useEffect(() => {
@@ -68,8 +103,13 @@ export default function SessionPage() {
     if (id === 'new' && initialTitle && initialDescription && messages.length === 1 && !isPlaying && currentTime === 0) {
       const initialPrompt = `**Title**: ${initialTitle}\n**Description**: ${initialDescription}`;
       
-      setMessages(prev => [...prev, { role: 'user', text: initialPrompt, timeOffset: 0 }]);
-      setMessages(prev => [...prev, { role: 'ai', text: 'Generating your lesson now using AI... This may take a minute.' }]);
+      setMessages(prev => [...prev, { role: 'user', text: initialPrompt, mode: initialMode }]);
+      setMessages(prev => [...prev, {
+        role: 'ai',
+        text: initialMode === 'animate'
+          ? 'Generating your animated lesson now...'
+          : 'Generating your tutor-style text response now...'
+      }]);
       setIsGenerating(true);
       
       const createSession = async () => {
@@ -81,14 +121,16 @@ export default function SessionPage() {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ title: initialTitle, description: initialDescription })
+            body: JSON.stringify({ title: initialTitle, description: initialDescription, mode: initialMode })
           });
           
           if (res.ok) {
             const data = await res.json();
-            setMessages(prev => [...prev, { role: 'ai', text: 'Generation complete! The animation will begin playing.' }]);
-            // Redirect to the new session ID so it can be reloaded later
-            navigate(`/session/${data.id}`, { replace: true });
+            setMessages(prev => [...prev, {
+              role: 'ai',
+              text: 'Session created successfully! Loading your session now.'
+            }]);
+            navigate(`/session/${data.id}`, { replace: true, state: { mode: initialMode } });
           } else {
             setMessages(prev => [...prev, { role: 'ai', text: 'Sorry, there was an error generating the session.' }]);
             setIsGenerating(false);
@@ -101,7 +143,7 @@ export default function SessionPage() {
       
       createSession();
     }
-  }, [id, initialTitle, initialDescription, messages.length, isPlaying, currentTime, navigate]);
+  }, [id, initialTitle, initialDescription, initialMode, messages.length, isPlaying, currentTime, navigate]);
 
   // Handle loading an existing session
   useEffect(() => {
@@ -115,34 +157,28 @@ export default function SessionPage() {
           if (res.ok) {
             const data = await res.json();
             setSessionData(data);
-            // Parse history format or fallback to legacy formats
-            let historyData = [];
-            if (data.animation_data && data.animation_data.history) {
-              historyData = data.animation_data.history;
-            } else if (data.animation_data && data.animation_data.scenes) {
-              historyData = [{ prompt: data.title + " - " + data.description, scenes: data.animation_data.scenes }];
-            } else if (Array.isArray(data.animation_data)) {
-              historyData = [{ prompt: data.title + " - " + data.description, scenes: data.animation_data }];
-            }
+            const historyData = getHistoryFromSession(data);
+            const preferredMode = data?.animation_data?.default_mode || historyData[historyData.length - 1]?.mode || 'animate';
+            setResponseMode(preferredMode);
             
             if (historyData.length > 0) {
-              // Rebuild messages from history
-              const newMessages = [];
-              historyData.forEach((item, index) => {
-                newMessages.push({ role: 'user', text: item.prompt, historyIndex: index });
-                if (index === historyData.length - 1) {
-                  newMessages.push({ role: 'ai', text: 'Lesson loaded successfully! Playing animation.' });
-                } else {
-                  newMessages.push({ role: 'ai', text: 'Animation generated for this prompt.' });
-                }
-              });
-              setMessages(newMessages);
-              
-              setScenes(historyData[historyData.length - 1].scenes);
+              setMessages(buildMessagesFromHistory(historyData));
+
+              const lastAnimated = [...historyData].reverse().find((item) => (item.mode || (item.scenes ? 'animate' : 'text')) === 'animate' && Array.isArray(item.scenes));
+              if (lastAnimated) {
+                setScenes(lastAnimated.scenes);
+                setIsPlaying(true);
+              } else {
+                setScenes([]);
+                setIsPlaying(false);
+              }
+            } else {
+              setMessages([{ role: 'ai', text: getInitialAssistantMessage(preferredMode) }]);
+              setScenes([]);
+              setIsPlaying(false);
             }
             
             setIsGenerating(false);
-            setIsPlaying(true);
             setPhase('video');
             setVideoEnded(false);
             if (playerRef.current) playerRef.current.seek(0);
@@ -166,8 +202,13 @@ export default function SessionPage() {
     const prompt = chatInput.trim();
     setChatInput('');
     setIsGenerating(true);
-    setMessages(prev => [...prev, { role: 'user', text: prompt }]);
-    setMessages(prev => [...prev, { role: 'ai', text: 'Generating new scenes for your request...' }]);
+    setMessages(prev => [...prev, { role: 'user', text: prompt, mode: responseMode }]);
+    setMessages(prev => [...prev, {
+      role: 'ai',
+      text: responseMode === 'animate'
+        ? 'Generating new animation for your request...'
+        : 'Generating text response for your request...'
+    }]);
     
     try {
       const token = localStorage.getItem('animax_token');
@@ -177,45 +218,48 @@ export default function SessionPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt, mode: responseMode })
       });
       if (res.ok) {
         const data = await res.json();
         setSessionData(data);
-        
-        let historyData = [];
-        if (data.animation_data && data.animation_data.history) {
-          historyData = data.animation_data.history;
-        }
+        const historyData = getHistoryFromSession(data);
         
         if (historyData.length > 0) {
           const newIndex = historyData.length - 1;
+          const newEntry = historyData[newIndex];
+          const entryMode = newEntry.mode || (newEntry.scenes ? 'animate' : 'text');
           
-          // Update the last user message to have the historyIndex, and update AI message
           setMessages(prev => {
             const updated = [...prev];
-            // The user message is at updated.length - 2
             if (updated.length >= 2) {
-              updated[updated.length - 2] = { ...updated[updated.length - 2], historyIndex: newIndex };
-              updated[updated.length - 1] = { role: 'ai', text: 'New distinct animation generated! Playing now.' };
+              if (entryMode === 'animate') {
+                updated[updated.length - 2] = { ...updated[updated.length - 2], historyIndex: newIndex, mode: 'animate' };
+                updated[updated.length - 1] = { role: 'ai', text: 'New animation generated! Playing now.' };
+              } else {
+                updated[updated.length - 2] = { ...updated[updated.length - 2], mode: 'text' };
+                updated[updated.length - 1] = { role: 'ai', text: newEntry.response || 'No response received.', mode: 'text' };
+              }
             }
             return updated;
           });
-          
-          setScenes(historyData[newIndex].scenes);
+
+          if (entryMode === 'animate') {
+            setScenes(newEntry.scenes || []);
+            setIsPlaying(true);
+            setPhase('video');
+            setVideoEnded(false);
+            if (playerRef.current) {
+              playerRef.current.seek(0);
+            }
+          } else {
+            setIsPlaying(false);
+          }
         }
-        
-        // Auto-play from start of the new segment
+
         setIsGenerating(false);
-        setIsPlaying(true);
-        setPhase('video');
-        setVideoEnded(false);
-        
-        if (playerRef.current) {
-           playerRef.current.seek(0);
-        }
       } else {
-        setMessages(prev => [...prev, { role: 'ai', text: 'Error adding new scenes.' }]);
+        setMessages(prev => [...prev, { role: 'ai', text: 'Error while generating a response.' }]);
         setIsGenerating(false);
       }
     } catch (err) {
@@ -236,7 +280,10 @@ export default function SessionPage() {
     }
     
     if (historyData[index]) {
-      setScenes(historyData[index].scenes);
+      const item = historyData[index];
+      if (!Array.isArray(item.scenes)) return;
+
+      setScenes(item.scenes);
       setIsPlaying(true);
       setPhase('video');
       setVideoEnded(false);
@@ -266,21 +313,6 @@ export default function SessionPage() {
     setIsPlaying(!isPlaying);
   };
 
-  // ---------- QUIZ LOGIC ----------
-  const currentQuestion = questions[currentQuestionIdx];
-  const selectedOption = quizAnswers[currentQuestion?.id];
-
-  const handleQuizSelect = (idx) => setQuizAnswers({ ...quizAnswers, [currentQuestion.id]: idx });
-  const handleQuizSubmit = () => setIsSubmitted(true);
-  const handleQuizNext = () => {
-    if (currentQuestionIdx < questions.length - 1) {
-      setCurrentQuestionIdx(prev => prev + 1);
-      setIsSubmitted(false);
-    } else {
-      setPhase('analysis');
-    }
-  };
-
   return (
     <div className="flex flex-col lg:flex-row h-screen pt-16 bg-background">
       
@@ -302,8 +334,14 @@ export default function SessionPage() {
                 {msg.role === 'ai' ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
               </div>
               <div className={`p-4 rounded-2xl max-w-[85%] text-sm leading-relaxed ${msg.role === 'user' ? 'bg-primary text-white rounded-tr-sm' : 'bg-gray-800 text-gray-200 rounded-tl-sm shadow-md'}`}>
-                <div className="whitespace-pre-wrap">{msg.text}</div>
-                {msg.historyIndex !== undefined && (
+                {msg.role === 'ai' && msg.mode === 'text' ? (
+                  <div className="prose prose-invert prose-sm max-w-none whitespace-pre-wrap break-words prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-code:text-blue-200">
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap">{msg.text}</div>
+                )}
+                {msg.historyIndex !== undefined && msg.mode === 'animate' && (
                   <button
                     onClick={() => handlePlaySegment(msg.historyIndex)}
                     className={`mt-3 flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
@@ -322,12 +360,37 @@ export default function SessionPage() {
         </div>
         
         <form onSubmit={handleSendChat} className="p-4 border-t border-gray-800 bg-surface">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Response Mode</span>
+            <div className="inline-flex rounded-lg border border-gray-700 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setResponseMode('animate')}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  responseMode === 'animate' ? 'bg-primary/20 text-primary' : 'bg-gray-900 text-gray-300'
+                }`}
+                disabled={isGenerating}
+              >
+                Animate
+              </button>
+              <button
+                type="button"
+                onClick={() => setResponseMode('text')}
+                className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  responseMode === 'text' ? 'bg-primary/20 text-primary' : 'bg-gray-900 text-gray-300'
+                }`}
+                disabled={isGenerating}
+              >
+                Text
+              </button>
+            </div>
+          </div>
           <div className="relative">
             <input
               type="text"
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Prompt to animate (e.g. Explain Quantum Entanglement)"
+              placeholder={responseMode === 'animate' ? 'Prompt to animate (e.g. Explain Quantum Entanglement)' : 'Ask a text question (e.g. Explain Quantum Entanglement simply)'}
               className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-4 pr-12 focus:outline-none focus:ring-2 focus:ring-primary text-text shadow-inner"
               disabled={isGenerating}
             />
@@ -362,7 +425,9 @@ export default function SessionPage() {
               <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-sm z-20">
                 <div className="text-center">
                   <Loader2 className="w-12 h-12 text-primary mx-auto mb-4 animate-spin" />
-                  <p className="text-gray-400 font-medium animate-pulse">Generating animation...</p>
+                  <p className="text-gray-400 font-medium animate-pulse">
+                    {responseMode === 'animate' ? 'Generating animation...' : 'Generating text response...'}
+                  </p>
                 </div>
               </div>
             )}
@@ -371,7 +436,7 @@ export default function SessionPage() {
               <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-sm z-10">
                 <div className="text-center">
                   <Bot className="w-12 h-12 text-gray-600 mx-auto mb-4 animate-pulse" />
-                  <p className="text-gray-400 font-medium">Waiting for your prompt...</p>
+                  <p className="text-gray-400 font-medium">No active animation yet. Switch to Animate mode to generate one.</p>
                 </div>
               </div>
             )}

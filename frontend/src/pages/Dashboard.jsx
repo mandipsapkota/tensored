@@ -9,6 +9,7 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [mode, setMode] = useState('animate');
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -37,7 +38,7 @@ export default function Dashboard() {
   const handleCreateSession = (e) => {
     e.preventDefault();
     if (!title.trim() || !description.trim()) return;
-    navigate('/session/new', { state: { title, description } });
+    navigate('/session/new', { state: { title, description, mode } });
   };
 
   return (
@@ -129,11 +130,38 @@ export default function Dashboard() {
                   required
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-400 mb-2">Initial Response Mode</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('animate')}
+                    className={`py-3 rounded-xl border font-semibold transition-colors ${
+                      mode === 'animate'
+                        ? 'bg-primary/20 text-primary border-primary/40'
+                        : 'bg-gray-900 text-gray-300 border-gray-700 hover:border-gray-500'
+                    }`}
+                  >
+                    Animate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMode('text')}
+                    className={`py-3 rounded-xl border font-semibold transition-colors ${
+                      mode === 'text'
+                        ? 'bg-primary/20 text-primary border-primary/40'
+                        : 'bg-gray-900 text-gray-300 border-gray-700 hover:border-gray-500'
+                    }`}
+                  >
+                    Text
+                  </button>
+                </div>
+              </div>
               <button 
                 type="submit"
                 className="w-full py-4 bg-primary hover:bg-blue-600 text-white rounded-xl font-bold text-lg transition-colors mt-4"
               >
-                Generate Lesson
+                Create Session
               </button>
             </form>
           </div>
