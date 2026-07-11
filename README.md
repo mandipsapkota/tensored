@@ -33,13 +33,13 @@ OPENAI_API_KEY=your_openai_api_key
 The project requires Python virtual environments for both the AI and Backend services.
 
  ⁠bash
-# Setup AI Service
+### 3.Setup AI Service
 cd ai
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Setup Backend Service
+### 4. Setup Backend Service
 cd ../backend
 python -m venv venv
 source venv/bin/activate
