@@ -29,11 +29,11 @@ VITE_API_BASE=your_api_backend_url
 OPENAI_API_KEY=your_openai_api_key
 
 
-⁠ ### 2. Installation
+### 2. Installation
 The project requires Python virtual environments for both the AI and Backend services.
 
  ⁠bash
-###3.Setup AI Service
+### 3.Setup AI Service
 cd ai
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
